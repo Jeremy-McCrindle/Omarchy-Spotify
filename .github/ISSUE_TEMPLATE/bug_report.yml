@@ -1,0 +1,61 @@
+name: Bug report
+description: Something the plugin does wrong. Vague is fine — triage sharpens it.
+labels: [bug]
+body:
+  - type: textarea
+    id: symptom
+    attributes:
+      label: What happens
+      description: In your own words. One sentence is enough.
+      placeholder: The panel flickers when I scroll a long playlist.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      options:
+        - Bar widget
+        - Panel
+        - Playback / audio
+        - Setup, sign-in or auth
+        - Spotify Connect device
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: since
+    attributes:
+      label: When it started
+      description: After an update, after a reboot, always, or unknown.
+      placeholder: unknown
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: >
+        Leave blank if you do not know. Triage fills this in and no fix ships without it:
+        a command that fails because of this bug, or a statement of which levers were tried
+        and why none reached it.
+      render: shell
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Version and state
+      description: Output of the commands below.
+      value: |
+        $ git log --oneline -1
+        $ systemctl --user is-active omarchy-spotify.service
+        $ cat "$XDG_RUNTIME_DIR/omarchy-spotify/startup-error.json" 2>/dev/null
+      render: shell
+
+  - type: input
+    id: upstream
+    attributes:
+      label: Matching upstream issue
+      description: stappmus/Omarchy-Spotify issue number, if one already names this.
+      placeholder: none found
