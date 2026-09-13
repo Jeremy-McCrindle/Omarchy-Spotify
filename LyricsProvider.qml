@@ -79,7 +79,7 @@ Item {
       activeXhr = xhr
       xhr.onreadystatechange = function() {
         if (xhr.readyState !== XMLHttpRequest.DONE) return
-        if (mySerial !== root.serial) return
+        if (mySerial !== root.serial || root.activeXhr !== xhr) return
         root.activeXhr = null
         timeoutTimer.stop()
         root.handleResponse(step, Number(xhr.status) || 0,

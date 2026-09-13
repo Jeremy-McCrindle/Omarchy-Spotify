@@ -578,6 +578,14 @@ TestCase {
     compare(Api.lyricsStatusText("ready", ""), "")
   }
 
+  function test_lyricsErrorText_namesEveryKind() {
+    compare(Api.lyricsErrorText("request", 0), "Lyrics could not be requested.")
+    compare(Api.lyricsErrorText("offline", 0), "Lyrics are unavailable offline.")
+    compare(Api.lyricsErrorText("timeout", 0), "Lyrics request timed out.")
+    compare(Api.lyricsErrorText("server", 503), "Lyrics service returned 503.")
+    compare(Api.lyricsErrorText("unknown", 0), "")
+  }
+
   function test_optionalLyricsPluginRequiresConfirmationBeforeSetup() {
     compare(Api.optionalPluginState(false, false), "missing")
     compare(Api.optionalPluginState(true, false), "disabled")
