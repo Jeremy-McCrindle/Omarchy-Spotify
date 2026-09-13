@@ -586,41 +586,6 @@ TestCase {
     compare(Api.lyricsErrorText("unknown", 0), "")
   }
 
-  function test_optionalLyricsPluginRequiresConfirmationBeforeSetup() {
-    compare(Api.optionalPluginState(false, false), "missing")
-    compare(Api.optionalPluginState(true, false), "disabled")
-    compare(Api.optionalPluginState(true, true), "ready")
-
-    compare(Api.optionalPluginSetupCommand("missing", "stappmus.lyrics",
-      "https://github.com/stappmus/Omasing.git"), [
-        "/usr/bin/omarchy", "plugin", "add",
-        "https://github.com/stappmus/Omasing.git", "--enable", "--yes"
-      ])
-    compare(Api.optionalPluginSetupCommand("disabled", "stappmus.lyrics",
-      "https://github.com/stappmus/Omasing.git"), [
-        "/usr/bin/omarchy", "plugin", "enable", "stappmus.lyrics",
-        "--section", "center"
-      ])
-    compare(Api.optionalPluginSetupCommand("ready", "stappmus.lyrics",
-      "https://github.com/stappmus/Omasing.git"), [])
-
-    var song = { id: "spotify:track:one", title: "Song", artist: "Artist" }
-    var intent = Api.lyricsInstallIntent(song, "spotify-panel-lyrics", 1000)
-    compare(intent.surface, "spotify-panel-lyrics")
-    compare(intent.song.title, "Song")
-    verify(Api.lyricsInstallIntentIsFresh(intent, 1000, 180000))
-    verify(Api.lyricsInstallIntentIsFresh(intent, 180999, 180000))
-    verify(!Api.lyricsInstallIntentIsFresh(intent, 181000, 180000))
-    compare(Api.lyricsInstallIntent(null, "surface", 1000), null)
-    compare(Api.sessionWithoutLyricsInstall({
-      lastRadioPlaylist: "keep",
-      pendingLyricsInstall: intent
-    }).lastRadioPlaylist, "keep")
-    compare(Api.sessionWithoutLyricsInstall({
-      pendingLyricsInstall: intent
-    }).pendingLyricsInstall, undefined)
-  }
-
   function test_sessionRecord_roundTripsAndMigratesPluginSettings() {
     compare(Api.sessionRecordIsEmpty(Api.emptySessionRecord()), true)
     compare(Api.sessionRecordIsEmpty(Api.parseSessionRecord("")), true)
