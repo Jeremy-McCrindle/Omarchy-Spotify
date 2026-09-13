@@ -748,6 +748,18 @@ function lyricsStatusText(state, message) {
   return LYRICS_STATUS_TEXT[key] || ""
 }
 
+var LYRICS_ERROR_TEXT = {
+  request: "Lyrics could not be requested.",
+  offline: "Lyrics are unavailable offline.",
+  timeout: "Lyrics request timed out."
+}
+
+function lyricsErrorText(kind, status) {
+  var key = String(kind || "")
+  if (key === "server") return "Lyrics service returned " + (Number(status) || 0) + "."
+  return LYRICS_ERROR_TEXT[key] || ""
+}
+
 function volumeFlushInterval(target) {
   var backend = String(target || "").trim().toLowerCase()
   if (backend === "remote") return VOLUME_FLUSH_REMOTE_MS

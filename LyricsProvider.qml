@@ -34,11 +34,13 @@ Item {
     var key = Api.lyricsCacheKey(song)
     if (!key) return ""
     var hit = cached(key)
+    abortActive()
+    clearActive()
     if (hit) {
+      remember(key, hit)
       Qt.callLater(function() { root.loaded(key, hit) })
       return key
     }
-    abortActive()
     activeKey = key
     activeSong = song
     startStep("exact", Api.lrclibGetUrl(song))
@@ -64,6 +66,7 @@ Item {
   }
 
   function clearActive() {
+    serial += 1
     activeKey = ""
     activeSong = null
   }
@@ -88,7 +91,7 @@ Item {
       timeoutTimer.restart()
     } catch (error) {
       activeXhr = null
-      finishFailed("Lyrics could not be requested.")
+      finishFailed(Api.lyricsErrorText("request"))
     }
   }
 
@@ -102,8 +105,8 @@ Item {
       return
     }
     if (status < 200 || status >= 300) {
-      finishFailed(status === 0 ? "Lyrics are unavailable offline."
-        : "Lyrics service returned " + status + ".")
+      finishFailed(status === 0 ? Api.lyricsErrorText("offline")
+        : Api.lyricsErrorText("server", status))
       return
     }
     var row = step === "search" ? Api.pickLrclibCandidate(payload, activeSong) : payload
@@ -115,7 +118,7 @@ Item {
     if (!key) return
     abortActive()
     clearActive()
-    failed(key, "Lyrics request timed out.")
+    failed(key, Api.lyricsErrorText("timeout"))
   }
 
   function finishLoaded(result) {
