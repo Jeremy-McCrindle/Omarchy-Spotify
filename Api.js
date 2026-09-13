@@ -572,8 +572,9 @@ function lyricsCacheKey(song) {
     String(song.album || ""), String(lrclibDurationSeconds(song))].join("|")
 }
 
-var LRC_METADATA_LINE = /^\[[a-zA-Z]+:[^\]]*\]$/
+var LRC_METADATA_LINE = /^\[(?:ar|ti|al|au|by|offset|length|re|ve|tool|#):[^\]]*\]$/i
 var LRC_LEADING_TIMESTAMP = /^\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/
+var LRC_OFFSET_LINE = /^\[offset:\s*([+-]?\d+)\]$/i
 
 function lrcTimestampMs(minutes, seconds, fraction) {
   var digits = String(fraction || "")
@@ -595,15 +596,27 @@ function parseLrcLine(line) {
 
 function parseLrc(text) {
   var entries = []
+  var offsetMs = 0
   var lines = String(text || "").replace(/\r/g, "").split("\n")
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i].trim()
-    if (!line || LRC_METADATA_LINE.test(line)) continue
+    if (!line) continue
+    var offsetMatch = LRC_OFFSET_LINE.exec(line)
+    if (offsetMatch) {
+      offsetMs += Number(offsetMatch[1])
+      continue
+    }
+    if (LRC_METADATA_LINE.test(line)) continue
     var parsed = parseLrcLine(line)
     for (var s = 0; s < parsed.stamps.length; s++)
-      entries.push({ timeMs: parsed.stamps[s], text: parsed.text })
+      entries.push({ timeMs: parsed.stamps[s], text: parsed.text, order: entries.length })
   }
-  return entries.sort(function(a, b) { return a.timeMs - b.timeMs })
+  return entries
+    .map(function(entry) {
+      return { timeMs: entry.timeMs + offsetMs, text: entry.text, order: entry.order }
+    })
+    .sort(function(a, b) { return (a.timeMs - b.timeMs) || (a.order - b.order) })
+    .map(function(entry) { return { timeMs: entry.timeMs, text: entry.text } })
 }
 
 function plainLyricLines(text) {
@@ -626,22 +639,28 @@ function lrclibRowHasText(row, field) {
   return String(row && row[field] || "").trim() !== ""
 }
 
+var LYRICS_RANK_WEIGHT = LYRICS_DURATION_TOLERANCE_S + 1
+
 function pickLrclibCandidate(rows, song) {
-  if (!Array.isArray(rows) || !song) return null
+  if (!song) return null
+  var list = arrayValues(rows)
   var target = lrclibDurationSeconds(song)
   var best = null
   var bestScore = Infinity
-  for (var i = 0; i < rows.length; i++) {
-    var row = rows[i]
+  for (var i = 0; i < list.length; i++) {
+    var row = list[i]
     if (!row || typeof row !== "object") continue
     var rowDuration = Number(row.duration) || 0
-    var diff = target > 0 && rowDuration > 0 ? Math.abs(rowDuration - target) : 0
+    var diff
+    if (target > 0 && rowDuration > 0) diff = Math.abs(rowDuration - target)
+    else if (target > 0) diff = LYRICS_DURATION_TOLERANCE_S
+    else diff = 0
     if (diff > LYRICS_DURATION_TOLERANCE_S) continue
     var hasSynced = lrclibRowHasText(row, "syncedLyrics")
     var hasPlain = lrclibRowHasText(row, "plainLyrics")
     if (!hasSynced && !hasPlain && row.instrumental !== true) continue
     var rank = hasSynced ? 0 : (hasPlain ? 1 : 2)
-    var score = rank * 100 + diff
+    var score = rank * LYRICS_RANK_WEIGHT + diff
     if (score < bestScore) {
       best = row
       bestScore = score
@@ -665,14 +684,15 @@ function lyricsFromLrclib(row) {
 }
 
 function activeLyricIndex(synced, positionMs) {
-  if (!Array.isArray(synced) || !synced.length) return -1
+  var list = arrayValues(synced)
+  if (!list.length) return -1
   var position = Number(positionMs) || 0
   var low = 0
-  var high = synced.length - 1
+  var high = list.length - 1
   var found = -1
   while (low <= high) {
     var mid = (low + high) >> 1
-    if (Number(synced[mid].timeMs) <= position) {
+    if (Number(list[mid].timeMs) <= position) {
       found = mid
       low = mid + 1
     } else {
@@ -692,23 +712,26 @@ function estimatedLyricIndex(lineCount, positionSeconds, durationSeconds) {
 
 function lyricTexts(lyrics) {
   if (!lyrics || typeof lyrics !== "object") return []
-  if (Array.isArray(lyrics.synced))
-    return lyrics.synced.map(function(entry) { return String(entry.text || "") })
-  return Array.isArray(lyrics.plain) ? lyrics.plain.slice() : []
+  var synced = arrayValues(lyrics.synced)
+  if (synced.length)
+    return synced.map(function(entry) { return String(entry.text || "") })
+  return arrayValues(lyrics.plain).slice()
 }
 
 function nextLyricIndex(texts, index) {
-  if (!Array.isArray(texts)) return -1
-  var start = Math.max(-1, Number(index) || 0)
-  for (var i = start + 1; i < texts.length; i++)
-    if (String(texts[i] || "") !== "") return i
+  var list = arrayValues(texts)
+  var raw = Number(index)
+  var start = isFinite(raw) ? Math.max(-1, Math.floor(raw)) : -1
+  for (var i = start + 1; i < list.length; i++)
+    if (String(list[i] || "") !== "") return i
   return -1
 }
 
 function lyricTextAt(texts, index) {
+  var list = arrayValues(texts)
   var i = Number(index)
-  if (!Array.isArray(texts) || !(i >= 0) || i >= texts.length) return ""
-  return String(texts[i] || "")
+  if (!(i >= 0) || i >= list.length) return ""
+  return String(list[i] || "")
 }
 
 var LYRICS_STATUS_TEXT = {

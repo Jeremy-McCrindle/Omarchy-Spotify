@@ -425,6 +425,7 @@ TestCase {
     compare(Api.lrclibGetUrl({ title: "T", artist: "A", album: "", duration: 0 }),
       "https://lrclib.net/api/get?artist_name=A&track_name=T")
     compare(Api.lrclibGetUrl(null), "")
+    compare(Api.lrclibSearchUrl(null), "")
   }
 
   function test_lyricsCacheKey_ignoresPositionAndRoundsDuration() {
@@ -455,10 +456,25 @@ TestCase {
     compare(Api.parseLrc(null), [])
   }
 
+  function test_parseLrc_isStableAndSupportsTimestampAndOffsetVariants() {
+    var same = Api.parseLrc("[00:01.00] one\n[00:01.00] two\n[00:01.00] three\n")
+    compare(same, [{ timeMs: 1000, text: "one" }, { timeMs: 1000, text: "two" },
+      { timeMs: 1000, text: "three" }])
+    compare(Api.parseLrc("[1:05.20] x")[0].timeMs, 65200)
+    compare(Api.parseLrc("[00:20:50] x")[0].timeMs, 20500)
+    compare(Api.parseLrc("[00:20] x")[0].timeMs, 20000)
+    compare(Api.parseLrc("[offset:+500]\n[00:10.00] la")[0].timeMs, 10500)
+    compare(Api.parseLrc("[offset:-500]\n[00:10.00] la")[0].timeMs, 9500)
+  }
+
   function test_plainLyricLines_collapsesBlankRuns() {
     compare(Api.plainLyricLines("\n\nFirst\r\nSecond\n\n\n[ar: x]\nThird\n\n"),
       ["First", "Second", "", "Third"])
     compare(Api.plainLyricLines(""), [])
+  }
+
+  function test_plainLyricLines_restrictsMetadataToKnownTags() {
+    compare(Api.plainLyricLines("[Verse: 1]\n[ar: x]\nLyric"), ["[Verse: 1]", "Lyric"])
   }
 
   function test_pickLrclibCandidate_prefersSyncedWithinTolerance() {
@@ -477,6 +493,13 @@ TestCase {
     compare(Api.pickLrclibCandidate(null, song), null)
     // An unknown song duration disables the tolerance filter.
     compare(Api.pickLrclibCandidate([farSynced], { title: "S", artist: "A", duration: 0 }).id, 1)
+    // A missing/zero row duration scores as the worst in-tolerance match, not a perfect one.
+    var zeroDurationPlain = { id: 6, duration: 0, syncedLyrics: "", plainLyrics: "x" }
+    var nearerPlain = { id: 7, duration: 201, syncedLyrics: "", plainLyrics: "x" }
+    compare(Api.pickLrclibCandidate([zeroDurationPlain, nearerPlain], song).id, 7)
+    var synced202 = { id: 8, duration: 202, syncedLyrics: "[00:01.00] x", plainLyrics: "x" }
+    var synced201 = { id: 9, duration: 201, syncedLyrics: "[00:01.00] x", plainLyrics: "x" }
+    compare(Api.pickLrclibCandidate([synced202, synced201], song).id, 9)
   }
 
   function test_lyricsFromLrclib_shapesStates() {
@@ -526,9 +549,15 @@ TestCase {
     var plain = { state: "ready", synced: null, plain: ["a", "", "b"] }
     compare(Api.lyricTexts(plain), ["a", "", "b"])
     compare(Api.lyricTexts(null), [])
+    var syncedEmpty = { state: "ready", synced: [], plain: ["a", "b"] }
+    compare(Api.lyricTexts(syncedEmpty), ["a", "b"])
+    var textsResult = Api.lyricTexts(plain)
+    textsResult.push("mutated")
+    compare(plain.plain, ["a", "", "b"])
     compare(Api.nextLyricIndex(["a", "", "b"], 0), 2)
     compare(Api.nextLyricIndex(["a", "", "b"], -1), 0)
     compare(Api.nextLyricIndex(["a", "", "b"], 2), -1)
+    compare(Api.nextLyricIndex(["a", "", "b"], undefined), 0)
     compare(Api.lyricTextAt(["a", "b"], 1), "b")
     compare(Api.lyricTextAt(["a", "b"], -1), "")
     compare(Api.lyricTextAt(["a", "b"], 7), "")
