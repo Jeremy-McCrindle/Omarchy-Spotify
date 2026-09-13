@@ -536,6 +536,42 @@ var VOLUME_FLUSH_REMOTE_MS = 250
 var VOLUME_FLUSH_SONOS_MS = 120
 var SLIDER_VOLUME_ACK_TOLERANCE = 0.04
 
+var LRCLIB_BASE = "https://lrclib.net"
+var LYRICS_REQUEST_TIMEOUT_MS = 15000
+var LYRICS_DURATION_TOLERANCE_S = 3
+var LYRICS_CACHE_LIMIT = 12
+var LYRICS_BROWSE_RESUME_MS = 6000
+
+function lrclibDurationSeconds(song) {
+  return Math.round(Math.max(0, Number(song && song.duration) || 0))
+}
+
+function lrclibGetUrl(song) {
+  if (!song) return ""
+  var duration = lrclibDurationSeconds(song)
+  return appendQuery(LRCLIB_BASE + "/api/get", {
+    track_name: String(song.title || ""),
+    artist_name: String(song.artist || ""),
+    album_name: String(song.album || ""),
+    duration: duration > 0 ? String(duration) : ""
+  })
+}
+
+function lrclibSearchUrl(song) {
+  if (!song) return ""
+  return appendQuery(LRCLIB_BASE + "/api/search", {
+    track_name: String(song.title || ""),
+    artist_name: String(song.artist || ""),
+    album_name: String(song.album || "")
+  })
+}
+
+function lyricsCacheKey(song) {
+  if (!song || !String(song.title || "") || !String(song.artist || "")) return ""
+  return [String(song.id || ""), String(song.title), String(song.artist),
+    String(song.album || ""), String(lrclibDurationSeconds(song))].join("|")
+}
+
 function volumeFlushInterval(target) {
   var backend = String(target || "").trim().toLowerCase()
   if (backend === "remote") return VOLUME_FLUSH_REMOTE_MS

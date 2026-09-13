@@ -413,6 +413,29 @@ TestCase {
       .positionSeconds, 180)
   }
 
+  function test_lrclibUrls_encodeTheSongTuple() {
+    var song = { id: "spotify:track:abc", title: "Bohemian Rhapsody",
+      artist: "Queen", album: "A Night at the Opera", duration: 354.6 }
+    compare(Api.lrclibGetUrl(song), "https://lrclib.net/api/get?"
+      + "album_name=A%20Night%20at%20the%20Opera&artist_name=Queen"
+      + "&duration=355&track_name=Bohemian%20Rhapsody")
+    compare(Api.lrclibSearchUrl(song), "https://lrclib.net/api/search?"
+      + "album_name=A%20Night%20at%20the%20Opera&artist_name=Queen"
+      + "&track_name=Bohemian%20Rhapsody")
+    compare(Api.lrclibGetUrl({ title: "T", artist: "A", album: "", duration: 0 }),
+      "https://lrclib.net/api/get?artist_name=A&track_name=T")
+    compare(Api.lrclibGetUrl(null), "")
+  }
+
+  function test_lyricsCacheKey_ignoresPositionAndRoundsDuration() {
+    var a = Api.lyricsSong("id", "Song", "Artist", "Album", 200.4, "", 10)
+    var b = Api.lyricsSong("id", "Song", "Artist", "Album", 200.4, "", 90)
+    compare(Api.lyricsCacheKey(a), "spotify:track:id|Song|Artist|Album|200")
+    compare(Api.lyricsCacheKey(a), Api.lyricsCacheKey(b))
+    compare(Api.lyricsCacheKey(null), "")
+    compare(Api.lyricsCacheKey({ title: "", artist: "A" }), "")
+  }
+
   function test_optionalLyricsPluginRequiresConfirmationBeforeSetup() {
     compare(Api.optionalPluginState(false, false), "missing")
     compare(Api.optionalPluginState(true, false), "disabled")
