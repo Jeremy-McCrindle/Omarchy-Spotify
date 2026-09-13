@@ -461,6 +461,41 @@ TestCase {
     compare(Api.plainLyricLines(""), [])
   }
 
+  function test_pickLrclibCandidate_prefersSyncedWithinTolerance() {
+    var song = { title: "S", artist: "A", album: "", duration: 200 }
+    var farSynced = { id: 1, duration: 210, syncedLyrics: "[00:01.00] x", plainLyrics: "x" }
+    var nearPlain = { id: 2, duration: 201, syncedLyrics: "", plainLyrics: "x" }
+    var nearSynced = { id: 3, duration: 202, syncedLyrics: "[00:01.00] x", plainLyrics: "x" }
+    var empty = { id: 4, duration: 200, syncedLyrics: "", plainLyrics: "" }
+    compare(Api.pickLrclibCandidate([farSynced, nearPlain, nearSynced, empty], song).id, 3)
+    compare(Api.pickLrclibCandidate([farSynced, nearPlain], song).id, 2)
+    compare(Api.pickLrclibCandidate([farSynced], song), null)
+    compare(Api.pickLrclibCandidate([empty], song), null)
+    var instrumental = { id: 5, duration: 200, instrumental: true }
+    compare(Api.pickLrclibCandidate([instrumental], song).id, 5)
+    compare(Api.pickLrclibCandidate([], song), null)
+    compare(Api.pickLrclibCandidate(null, song), null)
+    // An unknown song duration disables the tolerance filter.
+    compare(Api.pickLrclibCandidate([farSynced], { title: "S", artist: "A", duration: 0 }).id, 1)
+  }
+
+  function test_lyricsFromLrclib_shapesStates() {
+    var synced = Api.lyricsFromLrclib({ syncedLyrics: "[00:01.00] One\n[00:02.00] Two",
+      plainLyrics: "One\nTwo" })
+    compare(synced.state, "ready")
+    compare(synced.synced.length, 2)
+    compare(synced.plain, ["One", "Two"])
+    var plain = Api.lyricsFromLrclib({ syncedLyrics: "", plainLyrics: "One\nTwo" })
+    compare(plain.state, "ready")
+    compare(plain.synced, null)
+    compare(plain.plain, ["One", "Two"])
+    var syncedOnly = Api.lyricsFromLrclib({ syncedLyrics: "[00:01.00] One", plainLyrics: "" })
+    compare(syncedOnly.plain, ["One"])
+    compare(Api.lyricsFromLrclib({ instrumental: true }).state, "instrumental")
+    compare(Api.lyricsFromLrclib({}).state, "not-found")
+    compare(Api.lyricsFromLrclib(null).state, "not-found")
+  }
+
   function test_optionalLyricsPluginRequiresConfirmationBeforeSetup() {
     compare(Api.optionalPluginState(false, false), "missing")
     compare(Api.optionalPluginState(true, false), "disabled")

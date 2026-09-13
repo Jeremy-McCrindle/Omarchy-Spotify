@@ -622,6 +622,48 @@ function plainLyricLines(text) {
   return lines
 }
 
+function lrclibRowHasText(row, field) {
+  return String(row && row[field] || "").trim() !== ""
+}
+
+function pickLrclibCandidate(rows, song) {
+  if (!Array.isArray(rows) || !song) return null
+  var target = lrclibDurationSeconds(song)
+  var best = null
+  var bestScore = Infinity
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i]
+    if (!row || typeof row !== "object") continue
+    var rowDuration = Number(row.duration) || 0
+    var diff = target > 0 && rowDuration > 0 ? Math.abs(rowDuration - target) : 0
+    if (diff > LYRICS_DURATION_TOLERANCE_S) continue
+    var hasSynced = lrclibRowHasText(row, "syncedLyrics")
+    var hasPlain = lrclibRowHasText(row, "plainLyrics")
+    if (!hasSynced && !hasPlain && row.instrumental !== true) continue
+    var rank = hasSynced ? 0 : (hasPlain ? 1 : 2)
+    var score = rank * 100 + diff
+    if (score < bestScore) {
+      best = row
+      bestScore = score
+    }
+  }
+  return best
+}
+
+function lyricsFromLrclib(row) {
+  if (!row || typeof row !== "object")
+    return { state: "not-found", synced: null, plain: [] }
+  var synced = parseLrc(row.syncedLyrics)
+  var plain = plainLyricLines(row.plainLyrics)
+  if (!plain.length && synced.length)
+    plain = synced.map(function(entry) { return entry.text })
+  if (!synced.length && !plain.length) {
+    return { state: row.instrumental === true ? "instrumental" : "not-found",
+      synced: null, plain: [] }
+  }
+  return { state: "ready", synced: synced.length ? synced : null, plain: plain }
+}
+
 function volumeFlushInterval(target) {
   var backend = String(target || "").trim().toLowerCase()
   if (backend === "remote") return VOLUME_FLUSH_REMOTE_MS
