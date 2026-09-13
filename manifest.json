@@ -119,7 +119,7 @@
           "Off"
         ],
         "defaultValue": "On",
-        "description": "Show the Omasing lyrics button in the player and mini-player. When off, Ctrl+Shift+L is inactive too."
+        "description": "Show the lyrics button in the player and mini-player. When off, Ctrl+Shift+L is inactive too."
       },
       {
         "key": "showTrackTitle",

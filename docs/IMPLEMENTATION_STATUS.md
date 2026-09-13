@@ -56,9 +56,10 @@ Personal-client documentation follows [quota modes](https://developer.spotify.co
   existing explicit backend error, not a promise of a Spotify-side fix.
 - #37 exact reconnect-context recovery needs the upstream snapshot contract.
   Ownership activation does not restore a lost queue or shuffle context.
-- #26 configurable columns, #59 queue launcher, #50 built-in lyrics/zoom, and
-  managed Soloist support remain separate optional work. Omasing stays the
-  default. No Soloist client/key was provisioned or lossless quality claimed.
+- #26 configurable columns and #59 queue launcher remain separate optional
+  work. #50 built-in lyrics landed: the plugin fetches from LRCLIB and no
+  longer references Omasing. Managed Soloist support remains separate optional
+  work; no Soloist client/key was provisioned or lossless quality claimed.
 - #13 recommendation feedback remains deferred as specified in the plan.
 
 ## Validation and limits

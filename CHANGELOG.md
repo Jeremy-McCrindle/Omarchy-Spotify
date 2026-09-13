@@ -2,6 +2,11 @@
 
 ## 1.0.4 (unreleased)
 
+- Render lyrics inside the plugin from LRCLIB: a two-line strip in the
+  mini-player and a full scrolling Lyrics tab in the player, synced to playback
+  when timestamps exist. The optional Omasing plugin is no longer installed,
+  enabled, or launched from here, which also removes the shell teardown that
+  left the widget dead after confirming that install.
 - Start `Ctrl+F` and `/` searches across Spotify; press again to search the
   current area.
 - Cancel obsolete search pages, reuse pending searches and cached categories,
