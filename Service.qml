@@ -150,9 +150,9 @@ Item {
   readonly property string lyricsSongKey: Api.lyricsCacheKey(currentLyricsSong)
   readonly property int activeLyricIndex: {
     if (!lyrics || lyricsState !== "ready") return -1
-    if (lyrics.synced)
+    if (lyricsSynced)
       return Api.activeLyricIndex(lyrics.synced, positionSeconds * 1000)
-    return Api.estimatedLyricIndex(lyrics.plain.length, positionSeconds, lengthSeconds)
+    return Api.estimatedLyricIndex(Api.lyricTexts(lyrics).length, positionSeconds, lengthSeconds)
   }
   readonly property string lyricsPluginId: "stappmus.lyrics"
   readonly property string lyricsPluginUrl: "https://github.com/stappmus/Omasing.git"
@@ -755,11 +755,16 @@ Item {
   }
 
   function refreshLyrics() {
-    if (!lyricsWanted) return
+    if (!lyricsWanted) {
+      lyricsProvider.cancel()
+      if (lyricsState === "loading") lyricsState = "idle"
+      return
+    }
     var key = lyricsSongKey
     if (!key) {
       lyrics = null
       lyricsState = "idle"
+      lyricsMessage = ""
       loadedLyricsKey = ""
       return
     }
@@ -767,6 +772,7 @@ Item {
     lyricsState = "loading"
     lyricsMessage = ""
     lyrics = null
+    loadedLyricsKey = ""
     lyricsProvider.fetch(currentLyricsSong)
   }
 
@@ -4047,8 +4053,8 @@ Item {
 
   LyricsProvider {
     id: lyricsProvider
-    clientName: "omarchy-spotify/" + (root.manifest && root.manifest.version
-      ? String(root.manifest.version) : "dev")
+    clientName: "omarchy-spotify v" + (root.manifest && root.manifest.version
+      ? String(root.manifest.version) : "dev") + " (https://github.com/Jeremy-McCrindle/Omarchy-Spotify)"
     onLoaded: function(key, result) {
       if (key !== root.lyricsSongKey) return
       root.lyrics = result
