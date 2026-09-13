@@ -496,6 +496,55 @@ TestCase {
     compare(Api.lyricsFromLrclib(null).state, "not-found")
   }
 
+  function test_activeLyricIndex_binarySearchesTimestamps() {
+    var lines = [{ timeMs: 1000, text: "a" }, { timeMs: 5000, text: "b" },
+      { timeMs: 9000, text: "c" }]
+    compare(Api.activeLyricIndex(lines, 0), -1)
+    compare(Api.activeLyricIndex(lines, 999), -1)
+    compare(Api.activeLyricIndex(lines, 1000), 0)
+    compare(Api.activeLyricIndex(lines, 4999), 0)
+    compare(Api.activeLyricIndex(lines, 5000), 1)
+    compare(Api.activeLyricIndex(lines, 90000), 2)
+    compare(Api.activeLyricIndex([], 10), -1)
+    compare(Api.activeLyricIndex(null, 10), -1)
+  }
+
+  function test_estimatedLyricIndex_mapsPlaybackFraction() {
+    compare(Api.estimatedLyricIndex(10, 0, 100), 0)
+    compare(Api.estimatedLyricIndex(10, 50, 100), 5)
+    compare(Api.estimatedLyricIndex(10, 100, 100), 9)
+    compare(Api.estimatedLyricIndex(10, 150, 100), 9)
+    compare(Api.estimatedLyricIndex(10, -5, 100), 0)
+    compare(Api.estimatedLyricIndex(0, 50, 100), -1)
+    compare(Api.estimatedLyricIndex(10, 50, 0), -1)
+  }
+
+  function test_lyricTexts_andNextIndexSkipBlankLines() {
+    var synced = { state: "ready", synced: [{ timeMs: 0, text: "a" },
+      { timeMs: 1, text: "" }, { timeMs: 2, text: "b" }], plain: ["a", "b"] }
+    compare(Api.lyricTexts(synced), ["a", "", "b"])
+    var plain = { state: "ready", synced: null, plain: ["a", "", "b"] }
+    compare(Api.lyricTexts(plain), ["a", "", "b"])
+    compare(Api.lyricTexts(null), [])
+    compare(Api.nextLyricIndex(["a", "", "b"], 0), 2)
+    compare(Api.nextLyricIndex(["a", "", "b"], -1), 0)
+    compare(Api.nextLyricIndex(["a", "", "b"], 2), -1)
+    compare(Api.lyricTextAt(["a", "b"], 1), "b")
+    compare(Api.lyricTextAt(["a", "b"], -1), "")
+    compare(Api.lyricTextAt(["a", "b"], 7), "")
+  }
+
+  function test_lyricsStatusText_namesEveryState() {
+    compare(Api.lyricsStatusText("loading", ""), "Fetching lyrics…")
+    compare(Api.lyricsStatusText("not-found", ""), "No lyrics found")
+    compare(Api.lyricsStatusText("instrumental", ""), "Instrumental")
+    compare(Api.lyricsStatusText("error", "Lyrics request timed out."),
+      "Lyrics request timed out.")
+    compare(Api.lyricsStatusText("error", ""), "Lyrics unavailable")
+    compare(Api.lyricsStatusText("idle", ""), "")
+    compare(Api.lyricsStatusText("ready", ""), "")
+  }
+
   function test_optionalLyricsPluginRequiresConfirmationBeforeSetup() {
     compare(Api.optionalPluginState(false, false), "missing")
     compare(Api.optionalPluginState(true, false), "disabled")

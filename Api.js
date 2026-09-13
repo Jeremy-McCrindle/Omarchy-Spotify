@@ -664,6 +664,65 @@ function lyricsFromLrclib(row) {
   return { state: "ready", synced: synced.length ? synced : null, plain: plain }
 }
 
+function activeLyricIndex(synced, positionMs) {
+  if (!Array.isArray(synced) || !synced.length) return -1
+  var position = Number(positionMs) || 0
+  var low = 0
+  var high = synced.length - 1
+  var found = -1
+  while (low <= high) {
+    var mid = (low + high) >> 1
+    if (Number(synced[mid].timeMs) <= position) {
+      found = mid
+      low = mid + 1
+    } else {
+      high = mid - 1
+    }
+  }
+  return found
+}
+
+function estimatedLyricIndex(lineCount, positionSeconds, durationSeconds) {
+  var count = Math.floor(Number(lineCount) || 0)
+  var duration = Number(durationSeconds) || 0
+  if (count <= 0 || duration <= 0) return -1
+  var position = Math.max(0, Number(positionSeconds) || 0)
+  return Math.max(0, Math.min(count - 1, Math.floor(position / duration * count)))
+}
+
+function lyricTexts(lyrics) {
+  if (!lyrics || typeof lyrics !== "object") return []
+  if (Array.isArray(lyrics.synced))
+    return lyrics.synced.map(function(entry) { return String(entry.text || "") })
+  return Array.isArray(lyrics.plain) ? lyrics.plain.slice() : []
+}
+
+function nextLyricIndex(texts, index) {
+  if (!Array.isArray(texts)) return -1
+  var start = Math.max(-1, Number(index) || 0)
+  for (var i = start + 1; i < texts.length; i++)
+    if (String(texts[i] || "") !== "") return i
+  return -1
+}
+
+function lyricTextAt(texts, index) {
+  var i = Number(index)
+  if (!Array.isArray(texts) || !(i >= 0) || i >= texts.length) return ""
+  return String(texts[i] || "")
+}
+
+var LYRICS_STATUS_TEXT = {
+  loading: "Fetching lyrics…",
+  "not-found": "No lyrics found",
+  instrumental: "Instrumental"
+}
+
+function lyricsStatusText(state, message) {
+  var key = String(state || "")
+  if (key === "error") return String(message || "").trim() || "Lyrics unavailable"
+  return LYRICS_STATUS_TEXT[key] || ""
+}
+
 function volumeFlushInterval(target) {
   var backend = String(target || "").trim().toLowerCase()
   if (backend === "remote") return VOLUME_FLUSH_REMOTE_MS
