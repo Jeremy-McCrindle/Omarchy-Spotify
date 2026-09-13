@@ -436,6 +436,31 @@ TestCase {
     compare(Api.lyricsCacheKey({ title: "", artist: "A" }), "")
   }
 
+  function test_parseLrc_readsTimestampsAndSkipsMetadata() {
+    var lrc = "[ar: Queen]\n[ti: Bohemian Rhapsody]\n"
+      + "[00:07.13] Caught in a landslide\n"
+      + "[00:00.15] Is this the real life?\n"
+      + "[00:14.770]Open your eyes\n"
+      + "[00:20.5][00:25.5] Twice\n"
+      + "\n"
+      + "no timestamp here\n"
+    var lines = Api.parseLrc(lrc)
+    compare(lines.length, 5)
+    compare(lines[0], { timeMs: 150, text: "Is this the real life?" })
+    compare(lines[1], { timeMs: 7130, text: "Caught in a landslide" })
+    compare(lines[2], { timeMs: 14770, text: "Open your eyes" })
+    compare(lines[3], { timeMs: 20500, text: "Twice" })
+    compare(lines[4], { timeMs: 25500, text: "Twice" })
+    compare(Api.parseLrc(""), [])
+    compare(Api.parseLrc(null), [])
+  }
+
+  function test_plainLyricLines_collapsesBlankRuns() {
+    compare(Api.plainLyricLines("\n\nFirst\r\nSecond\n\n\n[ar: x]\nThird\n\n"),
+      ["First", "Second", "", "Third"])
+    compare(Api.plainLyricLines(""), [])
+  }
+
   function test_optionalLyricsPluginRequiresConfirmationBeforeSetup() {
     compare(Api.optionalPluginState(false, false), "missing")
     compare(Api.optionalPluginState(true, false), "disabled")

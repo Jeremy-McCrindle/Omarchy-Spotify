@@ -572,6 +572,56 @@ function lyricsCacheKey(song) {
     String(song.album || ""), String(lrclibDurationSeconds(song))].join("|")
 }
 
+var LRC_METADATA_LINE = /^\[[a-zA-Z]+:[^\]]*\]$/
+var LRC_LEADING_TIMESTAMP = /^\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/
+
+function lrcTimestampMs(minutes, seconds, fraction) {
+  var digits = String(fraction || "")
+  var millis = digits === "" ? 0 : Number((digits + "00").slice(0, 3))
+  return Number(minutes) * 60000 + Number(seconds) * 1000 + millis
+}
+
+function parseLrcLine(line) {
+  var stamps = []
+  var rest = String(line || "")
+  while (true) {
+    var match = LRC_LEADING_TIMESTAMP.exec(rest)
+    if (!match) break
+    stamps.push(lrcTimestampMs(match[1], match[2], match[3]))
+    rest = rest.slice(match[0].length)
+  }
+  return { stamps: stamps, text: rest.trim() }
+}
+
+function parseLrc(text) {
+  var entries = []
+  var lines = String(text || "").replace(/\r/g, "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim()
+    if (!line || LRC_METADATA_LINE.test(line)) continue
+    var parsed = parseLrcLine(line)
+    for (var s = 0; s < parsed.stamps.length; s++)
+      entries.push({ timeMs: parsed.stamps[s], text: parsed.text })
+  }
+  return entries.sort(function(a, b) { return a.timeMs - b.timeMs })
+}
+
+function plainLyricLines(text) {
+  var raw = String(text || "").replace(/\r/g, "").split("\n")
+  var lines = []
+  for (var i = 0; i < raw.length; i++) {
+    var line = raw[i].trim()
+    if (LRC_METADATA_LINE.test(line)) continue
+    if (line === "") {
+      if (lines.length && lines[lines.length - 1] !== "") lines.push("")
+      continue
+    }
+    lines.push(line)
+  }
+  while (lines.length && lines[lines.length - 1] === "") lines.pop()
+  return lines
+}
+
 function volumeFlushInterval(target) {
   var backend = String(target || "").trim().toLowerCase()
   if (backend === "remote") return VOLUME_FLUSH_REMOTE_MS
