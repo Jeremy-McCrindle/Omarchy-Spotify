@@ -457,9 +457,13 @@ TestCase {
   }
 
   function test_parseLrc_isStableAndSupportsTimestampAndOffsetVariants() {
-    var same = Api.parseLrc("[00:01.00] one\n[00:01.00] two\n[00:01.00] three\n")
-    compare(same, [{ timeMs: 1000, text: "one" }, { timeMs: 1000, text: "two" },
-      { timeMs: 1000, text: "three" }])
+    // Qt's sort is only accidentally stable below four items, so a small
+    // fixture cannot catch a regression to an unstable comparator.
+    var source = ""
+    for (var i = 0; i < 12; i++) source += "[00:01.00] line" + i + "\n"
+    var same = Api.parseLrc(source)
+    compare(same.length, 12)
+    for (var j = 0; j < 12; j++) compare(same[j], { timeMs: 1000, text: "line" + j })
     compare(Api.parseLrc("[1:05.20] x")[0].timeMs, 65200)
     compare(Api.parseLrc("[00:20:50] x")[0].timeMs, 20500)
     compare(Api.parseLrc("[00:20] x")[0].timeMs, 20000)
