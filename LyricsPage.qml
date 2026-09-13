@@ -16,6 +16,7 @@ Item {
   property color accent: Color.accent
   property string fontFamily: Style.font.family
   property bool following: true
+  property bool syncing: false
 
   readonly property var texts: Api.lyricTexts(service ? service.lyrics : null)
   readonly property bool ready: !!service && service.lyricsState === "ready"
@@ -38,10 +39,34 @@ Item {
 
   function syncToActive() {
     if (!following || activeIndex < 0 || activeIndex >= lyricsList.count) return
+    syncing = true
     lyricsList.currentIndex = activeIndex
+    syncing = false
+  }
+
+  function pageBy(direction) {
+    pauseFollowing()
+    var step = Math.max(0, lyricsList.height - Style.space(20))
+    lyricsList.contentY = lyricsWheel.boundedContentY(
+      lyricsList.contentY + (direction < 0 ? -step : step))
+  }
+
+  function jumpToEdge(toStart) {
+    pauseFollowing()
+    if (toStart) lyricsList.positionViewAtBeginning()
+    else lyricsList.positionViewAtEnd()
   }
 
   onActiveIndexChanged: syncToActive()
+  // A model swap resets currentIndex to 0, which would otherwise read as a
+  // manual scroll and pause following every time lyrics arrive mid-track.
+  onTextsChanged: {
+    syncing = true
+    Qt.callLater(function() {
+      root.syncing = false
+      root.syncToActive()
+    })
+  }
 
   Connections {
     target: root.service
@@ -77,25 +102,27 @@ Item {
       id: lyricsList
       objectName: "page-list"
       width: parent.width
-      height: Math.max(60, parent.height - footerCaption.height - parent.spacing)
+      height: Math.max(Style.space(60),
+        parent.height - footerCaption.height - parent.spacing)
       visible: root.ready
       clip: true
       model: root.texts
       spacing: Style.space(2)
       boundsBehavior: Flickable.StopAtBounds
+      keyNavigationEnabled: false
       highlightRangeMode: ListView.ApplyRange
       preferredHighlightBegin: height / 3
-      preferredHighlightEnd: height / 3 + Style.font.title * 2
+      preferredHighlightEnd: height / 3 + Style.space(40)
       highlightMoveDuration: 250
       highlightFollowsCurrentItem: true
       highlight: Item {}
 
       onCurrentIndexChanged: {
+        if (root.syncing) return
         if (root.following && currentIndex !== root.activeIndex) root.pauseFollowing()
       }
 
       delegate: Text {
-        id: line
         required property int index
         required property var modelData
         width: ListView.view.width
@@ -112,6 +139,7 @@ Item {
 
       FastScrollHandler {
         id: lyricsWheel
+        parent: lyricsList
         flickable: lyricsList
         onScrolled: root.pauseFollowing()
       }

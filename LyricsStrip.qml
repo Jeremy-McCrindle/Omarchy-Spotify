@@ -29,8 +29,8 @@ Item {
       service ? service.lyricsMessage : "")
   readonly property string nextText: ready
     ? Api.lyricTextAt(texts, Api.nextLyricIndex(texts, shownIndex)) : ""
-  readonly property real lineHeight: Style.font.body * 1.45
-  readonly property real nextLineHeight: Style.font.bodySmall * 1.45
+  readonly property real lineHeight: Style.space(18)
+  readonly property real nextLineHeight: Style.space(16)
 
   signal hovered(bool on)
 
@@ -49,6 +49,9 @@ Item {
     resumeTimer.stop()
     browseIndex = -1
   }
+
+  // A shorter set of lyrics can strand browseIndex past the end.
+  onTextsChanged: if (browsing && browseIndex >= texts.length) resumeFollowing()
 
   Connections {
     target: root.service

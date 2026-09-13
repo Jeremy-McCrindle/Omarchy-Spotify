@@ -452,10 +452,12 @@ BarWidget {
       else if (miniCursor === "volume") adjustVolume(0.05)
       else moveMiniCursor(1)
     } else if (plain && (event.key === Qt.Key_Up || text === "k")) {
-      if (miniCursor === "lyrics-strip") lyricsStrip.stepLine(-1)
+      if (miniCursor === "lyrics-strip" && lyricsStrip.ready)
+        lyricsStrip.stepLine(-1)
       else moveMiniCursor(-1)
     } else if (plain && (event.key === Qt.Key_Down || text === "j")) {
-      if (miniCursor === "lyrics-strip") lyricsStrip.stepLine(1)
+      if (miniCursor === "lyrics-strip" && lyricsStrip.ready)
+        lyricsStrip.stepLine(1)
       else moveMiniCursor(1)
     } else if (plain && event.key === Qt.Key_Home) {
       setMiniCursor(miniKeyboardActions[0])

@@ -506,7 +506,8 @@ Item {
     var selectedItemCount = service.selectedPlaylist
       ? service.playlistRememberedItemCount : restoredPlaylistItemCount
     service.persistSession({
-      tab: currentTab === "login" ? "home" : currentTab,
+      tab: currentTab === "login" || currentTab === "lyrics"
+        ? (Api.rememberContentTab(lastContentTab) || "home") : currentTab,
       searchText: searchText,
       searchType: searchType,
       libraryType: libraryType,
@@ -1118,6 +1119,19 @@ Item {
     return true
   }
 
+  // The lyrics page scrolls itself: it has no row cursor, so PageUp, PageDown,
+  // Home and End move its viewport rather than the panel's cursor.
+  function lyricsPageKey(key) {
+    var page = pageLoader.item
+    if (!page || typeof page.pageBy !== "function") return false
+    if (key === Qt.Key_PageUp) page.pageBy(-1)
+    else if (key === Qt.Key_PageDown) page.pageBy(1)
+    else if (key === Qt.Key_Home) page.jumpToEdge(true)
+    else if (key === Qt.Key_End) page.jumpToEdge(false)
+    else return false
+    return true
+  }
+
   function enterListAction(action, delta) {
     if (action === "sidebar-playlists" && playlistShortcuts.count > 0) {
       playlistShortcuts.currentIndex = delta < 0
@@ -1597,6 +1611,11 @@ Item {
       return true
     }
     if (menuKey && openCurrentContextMenu()) {
+      latchShortcutMode()
+      return true
+    }
+    if (currentTab === "lyrics" && !textInputFocused() && !ctrl && !alt
+        && lyricsPageKey(key)) {
       latchShortcutMode()
       return true
     }
