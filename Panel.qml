@@ -1123,7 +1123,8 @@ Item {
   // Home and End move its viewport rather than the panel's cursor.
   function lyricsPageKey(key) {
     var page = pageLoader.item
-    if (!page || typeof page.pageBy !== "function") return false
+    if (!page || typeof page.pageBy !== "function"
+        || typeof page.jumpToEdge !== "function") return false
     if (key === Qt.Key_PageUp) page.pageBy(-1)
     else if (key === Qt.Key_PageDown) page.pageBy(1)
     else if (key === Qt.Key_Home) page.jumpToEdge(true)
@@ -1614,7 +1615,7 @@ Item {
       latchShortcutMode()
       return true
     }
-    if (currentTab === "lyrics" && !textInputFocused() && !ctrl && !alt
+    if (currentTab === "lyrics" && !ctrl && !alt
         && lyricsPageKey(key)) {
       latchShortcutMode()
       return true
