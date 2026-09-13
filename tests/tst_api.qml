@@ -715,6 +715,9 @@ TestCase {
     compare(Api.previousContentTab("setup", "devices"), "home")
     compare(Api.previousContentTab("setup", ""), "home")
     compare(Api.previousContentTab("home", "library"), "")
+    compare(Api.previousContentTab("lyrics", "queue"), "queue")
+    compare(Api.previousContentTab("lyrics", "lyrics"), "home")
+    compare(Api.rememberContentTab("lyrics"), "")
     compare(Api.rememberContentTab("setup"), "")
     compare(Api.rememberContentTab("playlists"), "playlists")
   }

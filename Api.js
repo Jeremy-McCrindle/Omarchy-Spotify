@@ -1522,6 +1522,7 @@ function universalSearchVisible(tab, active) {
 function isUtilityTab(tab) {
   var area = String(tab || "")
   return area === "setup" || area === "devices" || area === "login"
+    || area === "lyrics"
 }
 
 function rememberContentTab(tab) {
@@ -1533,7 +1534,8 @@ function rememberContentTab(tab) {
 // and skips any intervening Settings/Devices visit so two Esc presses cannot
 // close the window from those menus.
 function previousContentTab(currentTab, lastContentTab) {
-  if (currentTab !== "setup" && currentTab !== "devices") return ""
+  var area = String(currentTab || "")
+  if (area !== "setup" && area !== "devices" && area !== "lyrics") return ""
   var previous = rememberContentTab(lastContentTab)
   return previous || "home"
 }
