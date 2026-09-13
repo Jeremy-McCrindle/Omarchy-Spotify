@@ -754,7 +754,10 @@ Item {
   }
 
   onLyricsSongKeyChanged: refreshLyrics()
-  onShowLyricsChanged: if (!showLyrics) lyricsVisible = false
+  onShowLyricsChanged: {
+    if (!showLyrics) lyricsVisible = false
+    refreshLyrics()
+  }
 
   function noteActivity() {
     lastActivityAt = Date.now()
