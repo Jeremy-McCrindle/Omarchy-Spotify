@@ -139,6 +139,21 @@ Item {
   readonly property var currentLyricsSong: Api.lyricsSong(currentTrackId,
     title, artist, album, lengthSeconds, artUrl, positionSeconds)
   readonly property bool lyricsAvailable: showLyrics && currentLyricsSong !== null
+  property bool lyricsVisible: false
+  property bool lyricsPageOpen: false
+  readonly property bool lyricsWanted: lyricsVisible || lyricsPageOpen
+  property string lyricsState: "idle"
+  property var lyrics: null
+  property string lyricsMessage: ""
+  property string loadedLyricsKey: ""
+  readonly property bool lyricsSynced: !!(lyrics && lyrics.synced)
+  readonly property string lyricsSongKey: Api.lyricsCacheKey(currentLyricsSong)
+  readonly property int activeLyricIndex: {
+    if (!lyrics || lyricsState !== "ready") return -1
+    if (lyrics.synced)
+      return Api.activeLyricIndex(lyrics.synced, positionSeconds * 1000)
+    return Api.estimatedLyricIndex(lyrics.plain.length, positionSeconds, lengthSeconds)
+  }
   readonly property string lyricsPluginId: "stappmus.lyrics"
   readonly property string lyricsPluginUrl: "https://github.com/stappmus/Omasing.git"
   readonly property string lyricsPluginAvailability: {
@@ -727,6 +742,36 @@ Item {
     if (statusMessage) statusClearTimer.restart()
     else statusClearTimer.stop()
   }
+
+  function toggleLyrics() {
+    if (!lyricsVisible && !lyricsAvailable) return
+    lyricsVisible = !lyricsVisible
+    refreshLyrics()
+  }
+
+  function setLyricsPageOpen(open) {
+    lyricsPageOpen = open === true
+    refreshLyrics()
+  }
+
+  function refreshLyrics() {
+    if (!lyricsWanted) return
+    var key = lyricsSongKey
+    if (!key) {
+      lyrics = null
+      lyricsState = "idle"
+      loadedLyricsKey = ""
+      return
+    }
+    if (key === loadedLyricsKey && lyricsState !== "error") return
+    lyricsState = "loading"
+    lyricsMessage = ""
+    lyrics = null
+    lyricsProvider.fetch(currentLyricsSong)
+  }
+
+  onLyricsSongKeyChanged: refreshLyrics()
+  onShowLyricsChanged: if (!showLyrics) lyricsVisible = false
 
   function requestLyrics(surface) {
     if (!currentLyricsSong) return "unavailable"
@@ -3998,6 +4043,26 @@ Item {
     stdout: StdioCollector { waitForEnd: true }
     stderr: StdioCollector { id: lyricsPluginLaunchStderr; waitForEnd: true }
     onExited: function(exitCode) { root.finishLyricsPluginLaunch(exitCode) }
+  }
+
+  LyricsProvider {
+    id: lyricsProvider
+    clientName: "omarchy-spotify/" + (root.manifest && root.manifest.version
+      ? String(root.manifest.version) : "dev")
+    onLoaded: function(key, result) {
+      if (key !== root.lyricsSongKey) return
+      root.lyrics = result
+      root.lyricsState = String(result.state || "not-found")
+      root.lyricsMessage = ""
+      root.loadedLyricsKey = key
+    }
+    onFailed: function(key, message) {
+      if (key !== root.lyricsSongKey) return
+      root.lyrics = null
+      root.lyricsState = "error"
+      root.lyricsMessage = String(message || "")
+      root.loadedLyricsKey = key
+    }
   }
 
   Timer {
