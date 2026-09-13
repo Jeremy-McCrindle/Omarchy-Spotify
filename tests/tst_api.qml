@@ -467,8 +467,8 @@ TestCase {
     compare(Api.parseLrc("[1:05.20] x")[0].timeMs, 65200)
     compare(Api.parseLrc("[00:20:50] x")[0].timeMs, 20500)
     compare(Api.parseLrc("[00:20] x")[0].timeMs, 20000)
-    compare(Api.parseLrc("[offset:+500]\n[00:10.00] la")[0].timeMs, 10500)
-    compare(Api.parseLrc("[offset:-500]\n[00:10.00] la")[0].timeMs, 9500)
+    compare(Api.parseLrc("[offset:+500]\n[00:10.00] la")[0].timeMs, 9500)
+    compare(Api.parseLrc("[offset:-500]\n[00:10.00] la")[0].timeMs, 10500)
   }
 
   function test_plainLyricLines_collapsesBlankRuns() {

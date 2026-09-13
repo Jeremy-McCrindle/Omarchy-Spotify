@@ -574,6 +574,8 @@ function lyricsCacheKey(song) {
 
 var LRC_METADATA_LINE = /^\[(?:ar|ti|al|au|by|offset|length|re|ve|tool|#):[^\]]*\]$/i
 var LRC_LEADING_TIMESTAMP = /^\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/
+// A positive [offset:] makes lyrics appear sooner (LRC convention), so it is
+// subtracted from every timestamp.
 var LRC_OFFSET_LINE = /^\[offset:\s*([+-]?\d+)\]$/i
 
 function lrcTimestampMs(minutes, seconds, fraction) {
@@ -613,7 +615,7 @@ function parseLrc(text) {
   }
   return entries
     .map(function(entry) {
-      return { timeMs: entry.timeMs + offsetMs, text: entry.text, order: entry.order }
+      return { timeMs: entry.timeMs - offsetMs, text: entry.text, order: entry.order }
     })
     .sort(function(a, b) { return (a.timeMs - b.timeMs) || (a.order - b.order) })
     .map(function(entry) { return { timeMs: entry.timeMs, text: entry.text } })
