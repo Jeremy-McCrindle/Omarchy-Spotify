@@ -536,6 +536,230 @@ var VOLUME_FLUSH_REMOTE_MS = 250
 var VOLUME_FLUSH_SONOS_MS = 120
 var SLIDER_VOLUME_ACK_TOLERANCE = 0.04
 
+var LRCLIB_BASE = "https://lrclib.net"
+var LYRICS_REQUEST_TIMEOUT_MS = 15000
+var LYRICS_DURATION_TOLERANCE_S = 3
+var LYRICS_CACHE_LIMIT = 12
+var LYRICS_BROWSE_RESUME_MS = 6000
+
+function lrclibDurationSeconds(song) {
+  return Math.round(Math.max(0, Number(song && song.duration) || 0))
+}
+
+function lrclibGetUrl(song) {
+  if (!song) return ""
+  var duration = lrclibDurationSeconds(song)
+  return appendQuery(LRCLIB_BASE + "/api/get", {
+    track_name: String(song.title || ""),
+    artist_name: String(song.artist || ""),
+    album_name: String(song.album || ""),
+    duration: duration > 0 ? String(duration) : ""
+  })
+}
+
+function lrclibSearchUrl(song) {
+  if (!song) return ""
+  return appendQuery(LRCLIB_BASE + "/api/search", {
+    track_name: String(song.title || ""),
+    artist_name: String(song.artist || ""),
+    album_name: String(song.album || "")
+  })
+}
+
+function lyricsCacheKey(song) {
+  if (!song || !String(song.title || "") || !String(song.artist || "")) return ""
+  return [String(song.id || ""), String(song.title), String(song.artist),
+    String(song.album || ""), String(lrclibDurationSeconds(song))].join("|")
+}
+
+var LRC_METADATA_LINE = /^\[(?:ar|ti|al|au|by|offset|length|re|ve|tool|#):[^\]]*\]$/i
+var LRC_LEADING_TIMESTAMP = /^\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/
+// A positive [offset:] makes lyrics appear sooner (LRC convention), so it is
+// subtracted from every timestamp.
+var LRC_OFFSET_LINE = /^\[offset:\s*([+-]?\d+)\]$/i
+
+function lrcTimestampMs(minutes, seconds, fraction) {
+  var digits = String(fraction || "")
+  var millis = digits === "" ? 0 : Number((digits + "00").slice(0, 3))
+  return Number(minutes) * 60000 + Number(seconds) * 1000 + millis
+}
+
+function parseLrcLine(line) {
+  var stamps = []
+  var rest = String(line || "")
+  while (true) {
+    var match = LRC_LEADING_TIMESTAMP.exec(rest)
+    if (!match) break
+    stamps.push(lrcTimestampMs(match[1], match[2], match[3]))
+    rest = rest.slice(match[0].length)
+  }
+  return { stamps: stamps, text: rest.trim() }
+}
+
+function parseLrc(text) {
+  var entries = []
+  var offsetMs = 0
+  var lines = String(text || "").replace(/\r/g, "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim()
+    if (!line) continue
+    var offsetMatch = LRC_OFFSET_LINE.exec(line)
+    if (offsetMatch) {
+      offsetMs += Number(offsetMatch[1])
+      continue
+    }
+    if (LRC_METADATA_LINE.test(line)) continue
+    var parsed = parseLrcLine(line)
+    for (var s = 0; s < parsed.stamps.length; s++)
+      entries.push({ timeMs: parsed.stamps[s], text: parsed.text, order: entries.length })
+  }
+  return entries
+    .map(function(entry) {
+      return { timeMs: entry.timeMs - offsetMs, text: entry.text, order: entry.order }
+    })
+    .sort(function(a, b) { return (a.timeMs - b.timeMs) || (a.order - b.order) })
+    .map(function(entry) { return { timeMs: entry.timeMs, text: entry.text } })
+}
+
+function plainLyricLines(text) {
+  var raw = String(text || "").replace(/\r/g, "").split("\n")
+  var lines = []
+  for (var i = 0; i < raw.length; i++) {
+    var line = raw[i].trim()
+    if (LRC_METADATA_LINE.test(line)) continue
+    if (line === "") {
+      if (lines.length && lines[lines.length - 1] !== "") lines.push("")
+      continue
+    }
+    lines.push(line)
+  }
+  while (lines.length && lines[lines.length - 1] === "") lines.pop()
+  return lines
+}
+
+function lrclibRowHasText(row, field) {
+  return String(row && row[field] || "").trim() !== ""
+}
+
+var LYRICS_RANK_WEIGHT = LYRICS_DURATION_TOLERANCE_S + 1
+
+function pickLrclibCandidate(rows, song) {
+  if (!song) return null
+  var list = arrayValues(rows)
+  var target = lrclibDurationSeconds(song)
+  var best = null
+  var bestScore = Infinity
+  for (var i = 0; i < list.length; i++) {
+    var row = list[i]
+    if (!row || typeof row !== "object") continue
+    var rowDuration = Number(row.duration) || 0
+    var diff
+    if (target > 0 && rowDuration > 0) diff = Math.abs(rowDuration - target)
+    else if (target > 0) diff = LYRICS_DURATION_TOLERANCE_S
+    else diff = 0
+    if (diff > LYRICS_DURATION_TOLERANCE_S) continue
+    var hasSynced = lrclibRowHasText(row, "syncedLyrics")
+    var hasPlain = lrclibRowHasText(row, "plainLyrics")
+    if (!hasSynced && !hasPlain && row.instrumental !== true) continue
+    var rank = hasSynced ? 0 : (hasPlain ? 1 : 2)
+    var score = rank * LYRICS_RANK_WEIGHT + diff
+    if (score < bestScore) {
+      best = row
+      bestScore = score
+    }
+  }
+  return best
+}
+
+function lyricsFromLrclib(row) {
+  if (!row || typeof row !== "object")
+    return { state: "not-found", synced: null, plain: [] }
+  var synced = parseLrc(row.syncedLyrics)
+  var plain = plainLyricLines(row.plainLyrics)
+  if (!plain.length && synced.length)
+    plain = synced.map(function(entry) { return entry.text })
+  if (!synced.length && !plain.length) {
+    return { state: row.instrumental === true ? "instrumental" : "not-found",
+      synced: null, plain: [] }
+  }
+  return { state: "ready", synced: synced.length ? synced : null, plain: plain }
+}
+
+function activeLyricIndex(synced, positionMs) {
+  var list = arrayValues(synced)
+  if (!list.length) return -1
+  var position = Number(positionMs) || 0
+  var low = 0
+  var high = list.length - 1
+  var found = -1
+  while (low <= high) {
+    var mid = (low + high) >> 1
+    if (Number(list[mid].timeMs) <= position) {
+      found = mid
+      low = mid + 1
+    } else {
+      high = mid - 1
+    }
+  }
+  return found
+}
+
+function estimatedLyricIndex(lineCount, positionSeconds, durationSeconds) {
+  var count = Math.floor(Number(lineCount) || 0)
+  var duration = Number(durationSeconds) || 0
+  if (count <= 0 || duration <= 0) return -1
+  var position = Math.max(0, Number(positionSeconds) || 0)
+  return Math.max(0, Math.min(count - 1, Math.floor(position / duration * count)))
+}
+
+function lyricTexts(lyrics) {
+  if (!lyrics || typeof lyrics !== "object") return []
+  var synced = arrayValues(lyrics.synced)
+  if (synced.length)
+    return synced.map(function(entry) { return String(entry.text || "") })
+  return arrayValues(lyrics.plain).slice()
+}
+
+function nextLyricIndex(texts, index) {
+  var list = arrayValues(texts)
+  var raw = Number(index)
+  var start = isFinite(raw) ? Math.max(-1, Math.floor(raw)) : -1
+  for (var i = start + 1; i < list.length; i++)
+    if (String(list[i] || "") !== "") return i
+  return -1
+}
+
+function lyricTextAt(texts, index) {
+  var list = arrayValues(texts)
+  var i = Number(index)
+  if (!(i >= 0) || i >= list.length) return ""
+  return String(list[i] || "")
+}
+
+var LYRICS_STATUS_TEXT = {
+  loading: "Fetching lyrics…",
+  "not-found": "No lyrics found",
+  instrumental: "Instrumental"
+}
+
+function lyricsStatusText(state, message) {
+  var key = String(state || "")
+  if (key === "error") return String(message || "").trim() || "Lyrics unavailable"
+  return LYRICS_STATUS_TEXT[key] || ""
+}
+
+var LYRICS_ERROR_TEXT = {
+  request: "Lyrics could not be requested.",
+  offline: "Lyrics are unavailable offline.",
+  timeout: "Lyrics request timed out."
+}
+
+function lyricsErrorText(kind, status) {
+  var key = String(kind || "")
+  if (key === "server") return "Lyrics service returned " + (Number(status) || 0) + "."
+  return LYRICS_ERROR_TEXT[key] || ""
+}
+
 function volumeFlushInterval(target) {
   var backend = String(target || "").trim().toLowerCase()
   if (backend === "remote") return VOLUME_FLUSH_REMOTE_MS
@@ -1000,48 +1224,6 @@ function lyricsSong(trackId, title, artist, album, duration, coverUrl,
   }
 }
 
-function optionalPluginState(installed, enabled) {
-  if (installed !== true) return "missing"
-  return enabled === true ? "ready" : "disabled"
-}
-
-// Installation runs non-interactively only after the app's own confirmation
-// prompt. Keep the repository and plugin id as separate argv entries so no
-// user-controlled text is ever interpreted by a shell.
-function optionalPluginSetupCommand(state, pluginId, repositoryUrl) {
-  var availability = String(state || "")
-  var id = String(pluginId || "").trim()
-  var url = String(repositoryUrl || "").trim()
-  // Use the absolute binary so a Quickshell Process/execDetached does not
-  // depend on the shell's PATH. --yes keeps add non-interactive.
-  if (availability === "missing" && url)
-    return ["/usr/bin/omarchy", "plugin", "add", url, "--enable", "--yes"]
-  if (availability === "disabled" && id)
-    return ["/usr/bin/omarchy", "plugin", "enable", id, "--section", "center"]
-  return []
-}
-
-function lyricsInstallIntent(song, surface, now) {
-  if (!song || typeof song !== "object") return null
-  return {
-    song: song,
-    surface: String(surface || ""),
-    startedAt: Number(now) || Date.now()
-  }
-}
-
-function lyricsInstallIntentIsFresh(intent, now, lifetimeMs) {
-  if (!intent || typeof intent !== "object" || !intent.song) return false
-  return timestampIsFresh(intent.startedAt, now,
-    lifetimeMs === undefined ? 180000 : lifetimeMs)
-}
-
-function sessionWithoutLyricsInstall(session) {
-  var next = shallowCopy(session)
-  delete next.pendingLyricsInstall
-  return next
-}
-
 var SESSION_STATE_LIMIT = 16000
 
 function normalizedSessionState(value) {
@@ -1340,6 +1522,7 @@ function universalSearchVisible(tab, active) {
 function isUtilityTab(tab) {
   var area = String(tab || "")
   return area === "setup" || area === "devices" || area === "login"
+    || area === "lyrics"
 }
 
 function rememberContentTab(tab) {
@@ -1351,7 +1534,8 @@ function rememberContentTab(tab) {
 // and skips any intervening Settings/Devices visit so two Esc presses cannot
 // close the window from those menus.
 function previousContentTab(currentTab, lastContentTab) {
-  if (currentTab !== "setup" && currentTab !== "devices") return ""
+  var area = String(currentTab || "")
+  if (area !== "setup" && area !== "devices" && area !== "lyrics") return ""
   var previous = rememberContentTab(lastContentTab)
   return previous || "home"
 }

@@ -7,8 +7,7 @@ beautiful Omarchy plugin. It uses about **60 MB of RAM** instead of roughly
 **950 MB** for the Spotify desktop client, follows your active Omarchy theme,
 and keeps your music close with an integrated mini player.
 
-Pair it with **Omasing** and lyrics for the song you are playing are fetched
-for you, ready when you want them.
+Lyrics for the song you are playing come from LRCLIB and render inside the player.
 
 ## Install
 
@@ -30,8 +29,7 @@ Requires Omarchy 4 and a personal Spotify Premium account.
 - **Your full music library.** Search Spotify, browse artists and albums,
   manage playlists and the queue, and move playback between Spotify Connect
   devices.
-- **Lyrics with Omasing.** Open the current song in Omasing and let it find the
-  right lyrics and playback position automatically.
+- **Built-in lyrics.** A two-line strip in the mini-player and a full scrolling view in the player, synced to playback when LRCLIB has timestamps.
 
 ## Familiar from the first click
 
@@ -93,10 +91,9 @@ Top albums and EPs sit beside the artist's ten biggest songs, with their
 
 ### Lyrics, already matched to the song
 
-One click sends the current track to Omasing, where the lyrics are fetched and
-lined up with your playback position—ready to auto-scroll as you listen.
-
-![Omarchy Spotify beside Omasing lyrics for Under the Bridge](docs/screenshots/omasing-lyrics-under-the-bridge.png)
+The plugin looks the track up on lrclib.net by title, artist, album and
+duration, so no account is needed. Toggle it with the note button or
+`Ctrl+Shift+L`.
 
 ### A mini player that belongs in your desktop
 
@@ -189,8 +186,8 @@ omarchy restart shell
 ```
 
 The cleanup deliberately leaves unrelated software alone. A source checkout
-outside Omarchy's plugin directory, separate plugins such as Omasing, and the
-`spotifyd` package remain in place. If this plugin was the only reason you
+outside Omarchy's plugin directory and the `spotifyd` package remain in
+place. If this plugin was the only reason you
 installed the fallback package, remove it with:
 
 ```bash

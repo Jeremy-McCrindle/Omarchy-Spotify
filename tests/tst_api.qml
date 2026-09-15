@@ -413,39 +413,177 @@ TestCase {
       .positionSeconds, 180)
   }
 
-  function test_optionalLyricsPluginRequiresConfirmationBeforeSetup() {
-    compare(Api.optionalPluginState(false, false), "missing")
-    compare(Api.optionalPluginState(true, false), "disabled")
-    compare(Api.optionalPluginState(true, true), "ready")
+  function test_lrclibUrls_encodeTheSongTuple() {
+    var song = { id: "spotify:track:abc", title: "Bohemian Rhapsody",
+      artist: "Queen", album: "A Night at the Opera", duration: 354.6 }
+    compare(Api.lrclibGetUrl(song), "https://lrclib.net/api/get?"
+      + "album_name=A%20Night%20at%20the%20Opera&artist_name=Queen"
+      + "&duration=355&track_name=Bohemian%20Rhapsody")
+    compare(Api.lrclibSearchUrl(song), "https://lrclib.net/api/search?"
+      + "album_name=A%20Night%20at%20the%20Opera&artist_name=Queen"
+      + "&track_name=Bohemian%20Rhapsody")
+    compare(Api.lrclibGetUrl({ title: "T", artist: "A", album: "", duration: 0 }),
+      "https://lrclib.net/api/get?artist_name=A&track_name=T")
+    compare(Api.lrclibGetUrl(null), "")
+    compare(Api.lrclibSearchUrl(null), "")
+  }
 
-    compare(Api.optionalPluginSetupCommand("missing", "stappmus.lyrics",
-      "https://github.com/stappmus/Omasing.git"), [
-        "/usr/bin/omarchy", "plugin", "add",
-        "https://github.com/stappmus/Omasing.git", "--enable", "--yes"
-      ])
-    compare(Api.optionalPluginSetupCommand("disabled", "stappmus.lyrics",
-      "https://github.com/stappmus/Omasing.git"), [
-        "/usr/bin/omarchy", "plugin", "enable", "stappmus.lyrics",
-        "--section", "center"
-      ])
-    compare(Api.optionalPluginSetupCommand("ready", "stappmus.lyrics",
-      "https://github.com/stappmus/Omasing.git"), [])
+  function test_lyricsCacheKey_ignoresPositionAndRoundsDuration() {
+    var a = Api.lyricsSong("id", "Song", "Artist", "Album", 200.4, "", 10)
+    var b = Api.lyricsSong("id", "Song", "Artist", "Album", 200.4, "", 90)
+    compare(Api.lyricsCacheKey(a), "spotify:track:id|Song|Artist|Album|200")
+    compare(Api.lyricsCacheKey(a), Api.lyricsCacheKey(b))
+    compare(Api.lyricsCacheKey(null), "")
+    compare(Api.lyricsCacheKey({ title: "", artist: "A" }), "")
+  }
 
-    var song = { id: "spotify:track:one", title: "Song", artist: "Artist" }
-    var intent = Api.lyricsInstallIntent(song, "spotify-panel-lyrics", 1000)
-    compare(intent.surface, "spotify-panel-lyrics")
-    compare(intent.song.title, "Song")
-    verify(Api.lyricsInstallIntentIsFresh(intent, 1000, 180000))
-    verify(Api.lyricsInstallIntentIsFresh(intent, 180999, 180000))
-    verify(!Api.lyricsInstallIntentIsFresh(intent, 181000, 180000))
-    compare(Api.lyricsInstallIntent(null, "surface", 1000), null)
-    compare(Api.sessionWithoutLyricsInstall({
-      lastRadioPlaylist: "keep",
-      pendingLyricsInstall: intent
-    }).lastRadioPlaylist, "keep")
-    compare(Api.sessionWithoutLyricsInstall({
-      pendingLyricsInstall: intent
-    }).pendingLyricsInstall, undefined)
+  function test_parseLrc_readsTimestampsAndSkipsMetadata() {
+    var lrc = "[ar: Queen]\n[ti: Bohemian Rhapsody]\n"
+      + "[00:07.13] Caught in a landslide\n"
+      + "[00:00.15] Is this the real life?\n"
+      + "[00:14.770]Open your eyes\n"
+      + "[00:20.5][00:25.5] Twice\n"
+      + "\n"
+      + "no timestamp here\n"
+    var lines = Api.parseLrc(lrc)
+    compare(lines.length, 5)
+    compare(lines[0], { timeMs: 150, text: "Is this the real life?" })
+    compare(lines[1], { timeMs: 7130, text: "Caught in a landslide" })
+    compare(lines[2], { timeMs: 14770, text: "Open your eyes" })
+    compare(lines[3], { timeMs: 20500, text: "Twice" })
+    compare(lines[4], { timeMs: 25500, text: "Twice" })
+    compare(Api.parseLrc(""), [])
+    compare(Api.parseLrc(null), [])
+  }
+
+  function test_parseLrc_isStableAndSupportsTimestampAndOffsetVariants() {
+    // Qt's sort is only accidentally stable below four items, so a small
+    // fixture cannot catch a regression to an unstable comparator.
+    var source = ""
+    for (var i = 0; i < 12; i++) source += "[00:01.00] line" + i + "\n"
+    var same = Api.parseLrc(source)
+    compare(same.length, 12)
+    for (var j = 0; j < 12; j++) compare(same[j], { timeMs: 1000, text: "line" + j })
+    compare(Api.parseLrc("[1:05.20] x")[0].timeMs, 65200)
+    compare(Api.parseLrc("[00:20:50] x")[0].timeMs, 20500)
+    compare(Api.parseLrc("[00:20] x")[0].timeMs, 20000)
+    compare(Api.parseLrc("[offset:+500]\n[00:10.00] la")[0].timeMs, 9500)
+    compare(Api.parseLrc("[offset:-500]\n[00:10.00] la")[0].timeMs, 10500)
+  }
+
+  function test_plainLyricLines_collapsesBlankRuns() {
+    compare(Api.plainLyricLines("\n\nFirst\r\nSecond\n\n\n[ar: x]\nThird\n\n"),
+      ["First", "Second", "", "Third"])
+    compare(Api.plainLyricLines(""), [])
+  }
+
+  function test_plainLyricLines_restrictsMetadataToKnownTags() {
+    compare(Api.plainLyricLines("[Verse: 1]\n[ar: x]\nLyric"), ["[Verse: 1]", "Lyric"])
+  }
+
+  function test_pickLrclibCandidate_prefersSyncedWithinTolerance() {
+    var song = { title: "S", artist: "A", album: "", duration: 200 }
+    var farSynced = { id: 1, duration: 210, syncedLyrics: "[00:01.00] x", plainLyrics: "x" }
+    var nearPlain = { id: 2, duration: 201, syncedLyrics: "", plainLyrics: "x" }
+    var nearSynced = { id: 3, duration: 202, syncedLyrics: "[00:01.00] x", plainLyrics: "x" }
+    var empty = { id: 4, duration: 200, syncedLyrics: "", plainLyrics: "" }
+    compare(Api.pickLrclibCandidate([farSynced, nearPlain, nearSynced, empty], song).id, 3)
+    compare(Api.pickLrclibCandidate([farSynced, nearPlain], song).id, 2)
+    compare(Api.pickLrclibCandidate([farSynced], song), null)
+    compare(Api.pickLrclibCandidate([empty], song), null)
+    var instrumental = { id: 5, duration: 200, instrumental: true }
+    compare(Api.pickLrclibCandidate([instrumental], song).id, 5)
+    compare(Api.pickLrclibCandidate([], song), null)
+    compare(Api.pickLrclibCandidate(null, song), null)
+    // An unknown song duration disables the tolerance filter.
+    compare(Api.pickLrclibCandidate([farSynced], { title: "S", artist: "A", duration: 0 }).id, 1)
+    // A missing/zero row duration scores as the worst in-tolerance match, not a perfect one.
+    var zeroDurationPlain = { id: 6, duration: 0, syncedLyrics: "", plainLyrics: "x" }
+    var nearerPlain = { id: 7, duration: 201, syncedLyrics: "", plainLyrics: "x" }
+    compare(Api.pickLrclibCandidate([zeroDurationPlain, nearerPlain], song).id, 7)
+    var synced202 = { id: 8, duration: 202, syncedLyrics: "[00:01.00] x", plainLyrics: "x" }
+    var synced201 = { id: 9, duration: 201, syncedLyrics: "[00:01.00] x", plainLyrics: "x" }
+    compare(Api.pickLrclibCandidate([synced202, synced201], song).id, 9)
+  }
+
+  function test_lyricsFromLrclib_shapesStates() {
+    var synced = Api.lyricsFromLrclib({ syncedLyrics: "[00:01.00] One\n[00:02.00] Two",
+      plainLyrics: "One\nTwo" })
+    compare(synced.state, "ready")
+    compare(synced.synced.length, 2)
+    compare(synced.plain, ["One", "Two"])
+    var plain = Api.lyricsFromLrclib({ syncedLyrics: "", plainLyrics: "One\nTwo" })
+    compare(plain.state, "ready")
+    compare(plain.synced, null)
+    compare(plain.plain, ["One", "Two"])
+    var syncedOnly = Api.lyricsFromLrclib({ syncedLyrics: "[00:01.00] One", plainLyrics: "" })
+    compare(syncedOnly.plain, ["One"])
+    compare(Api.lyricsFromLrclib({ instrumental: true }).state, "instrumental")
+    compare(Api.lyricsFromLrclib({}).state, "not-found")
+    compare(Api.lyricsFromLrclib(null).state, "not-found")
+  }
+
+  function test_activeLyricIndex_binarySearchesTimestamps() {
+    var lines = [{ timeMs: 1000, text: "a" }, { timeMs: 5000, text: "b" },
+      { timeMs: 9000, text: "c" }]
+    compare(Api.activeLyricIndex(lines, 0), -1)
+    compare(Api.activeLyricIndex(lines, 999), -1)
+    compare(Api.activeLyricIndex(lines, 1000), 0)
+    compare(Api.activeLyricIndex(lines, 4999), 0)
+    compare(Api.activeLyricIndex(lines, 5000), 1)
+    compare(Api.activeLyricIndex(lines, 90000), 2)
+    compare(Api.activeLyricIndex([], 10), -1)
+    compare(Api.activeLyricIndex(null, 10), -1)
+  }
+
+  function test_estimatedLyricIndex_mapsPlaybackFraction() {
+    compare(Api.estimatedLyricIndex(10, 0, 100), 0)
+    compare(Api.estimatedLyricIndex(10, 50, 100), 5)
+    compare(Api.estimatedLyricIndex(10, 100, 100), 9)
+    compare(Api.estimatedLyricIndex(10, 150, 100), 9)
+    compare(Api.estimatedLyricIndex(10, -5, 100), 0)
+    compare(Api.estimatedLyricIndex(0, 50, 100), -1)
+    compare(Api.estimatedLyricIndex(10, 50, 0), -1)
+  }
+
+  function test_lyricTexts_andNextIndexSkipBlankLines() {
+    var synced = { state: "ready", synced: [{ timeMs: 0, text: "a" },
+      { timeMs: 1, text: "" }, { timeMs: 2, text: "b" }], plain: ["a", "b"] }
+    compare(Api.lyricTexts(synced), ["a", "", "b"])
+    var plain = { state: "ready", synced: null, plain: ["a", "", "b"] }
+    compare(Api.lyricTexts(plain), ["a", "", "b"])
+    compare(Api.lyricTexts(null), [])
+    var syncedEmpty = { state: "ready", synced: [], plain: ["a", "b"] }
+    compare(Api.lyricTexts(syncedEmpty), ["a", "b"])
+    var textsResult = Api.lyricTexts(plain)
+    textsResult.push("mutated")
+    compare(plain.plain, ["a", "", "b"])
+    compare(Api.nextLyricIndex(["a", "", "b"], 0), 2)
+    compare(Api.nextLyricIndex(["a", "", "b"], -1), 0)
+    compare(Api.nextLyricIndex(["a", "", "b"], 2), -1)
+    compare(Api.nextLyricIndex(["a", "", "b"], undefined), 0)
+    compare(Api.lyricTextAt(["a", "b"], 1), "b")
+    compare(Api.lyricTextAt(["a", "b"], -1), "")
+    compare(Api.lyricTextAt(["a", "b"], 7), "")
+  }
+
+  function test_lyricsStatusText_namesEveryState() {
+    compare(Api.lyricsStatusText("loading", ""), "Fetching lyrics…")
+    compare(Api.lyricsStatusText("not-found", ""), "No lyrics found")
+    compare(Api.lyricsStatusText("instrumental", ""), "Instrumental")
+    compare(Api.lyricsStatusText("error", "Lyrics request timed out."),
+      "Lyrics request timed out.")
+    compare(Api.lyricsStatusText("error", ""), "Lyrics unavailable")
+    compare(Api.lyricsStatusText("idle", ""), "")
+    compare(Api.lyricsStatusText("ready", ""), "")
+  }
+
+  function test_lyricsErrorText_namesEveryKind() {
+    compare(Api.lyricsErrorText("request", 0), "Lyrics could not be requested.")
+    compare(Api.lyricsErrorText("offline", 0), "Lyrics are unavailable offline.")
+    compare(Api.lyricsErrorText("timeout", 0), "Lyrics request timed out.")
+    compare(Api.lyricsErrorText("server", 503), "Lyrics service returned 503.")
+    compare(Api.lyricsErrorText("unknown", 0), "")
   }
 
   function test_sessionRecord_roundTripsAndMigratesPluginSettings() {
@@ -577,6 +715,9 @@ TestCase {
     compare(Api.previousContentTab("setup", "devices"), "home")
     compare(Api.previousContentTab("setup", ""), "home")
     compare(Api.previousContentTab("home", "library"), "")
+    compare(Api.previousContentTab("lyrics", "queue"), "queue")
+    compare(Api.previousContentTab("lyrics", "lyrics"), "home")
+    compare(Api.rememberContentTab("lyrics"), "")
     compare(Api.rememberContentTab("setup"), "")
     compare(Api.rememberContentTab("playlists"), "playlists")
   }

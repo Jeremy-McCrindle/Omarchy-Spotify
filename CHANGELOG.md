@@ -2,6 +2,11 @@
 
 ## 1.0.4 (unreleased)
 
+- Render lyrics inside the plugin from LRCLIB: a two-line strip in the
+  mini-player and a full scrolling Lyrics tab in the player, synced to playback
+  when timestamps exist. The optional Omasing plugin is no longer installed,
+  enabled, or launched from here, which also removes the shell teardown that
+  left the widget dead after confirming that install.
 - Start `Ctrl+F` and `/` searches across Spotify; press again to search the
   current area.
 - Cancel obsolete search pages, reuse pending searches and cached categories,
@@ -20,8 +25,7 @@
 - Add a "Show artwork" setting (On by default). When off, album and playlist
   covers are never downloaded and the app becomes text-only: artwork tiles are
   removed entirely and their space is given to titles and controls across the
-  mini-player, now-playing card, lists, and detail pages. Lyrics plugins keep
-  receiving cover URLs.
+  mini-player, now-playing card, lists, and detail pages.
 
 - Keep popups drawn inside the player (keyboard shortcuts help, menus, and
   pickers) readable on translucent themes. They reuse the theme's popup

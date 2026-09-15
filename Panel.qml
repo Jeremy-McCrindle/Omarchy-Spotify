@@ -96,7 +96,6 @@ Item {
 
   readonly property string pluginId: manifest && manifest.id
     ? String(manifest.id) : "quickshell.spotify"
-  readonly property string lyricsRequestKey: "spotify-panel-lyrics"
   readonly property color foreground: Color.foreground
   readonly property color background: Color.background
   readonly property color accent: Color.accent
@@ -125,7 +124,7 @@ Item {
     && artistSearchText.trim() !== ""
   readonly property bool shortcutsBlocked: mediaContextMenu.opened
     || playlistPicker.opened || createPlaylistPopup.opened || sleepPopup.opened
-    || shortcutHelpPopup.opened || lyricsInstallPopup.opened
+    || shortcutHelpPopup.opened
   readonly property bool shortcutHintsEnabled: service
     ? service.shortcutHintsEnabled : true
   readonly property bool typingInField: {
@@ -350,10 +349,6 @@ Item {
   }
 
   function dismissTransientPopup() {
-    if (lyricsInstallPopup.opened && (!service || !service.lyricsPluginBusy)) {
-      lyricsInstallPopup.close()
-      return true
-    }
     if (shortcutHelpPopup.opened) {
       shortcutHelpPopup.close()
       return true
@@ -511,7 +506,8 @@ Item {
     var selectedItemCount = service.selectedPlaylist
       ? service.playlistRememberedItemCount : restoredPlaylistItemCount
     service.persistSession({
-      tab: currentTab === "login" ? "home" : currentTab,
+      tab: currentTab === "login" || currentTab === "lyrics"
+        ? (Api.rememberContentTab(lastContentTab) || "home") : currentTab,
       searchText: searchText,
       searchType: searchType,
       libraryType: libraryType,
@@ -998,7 +994,8 @@ Item {
     if (service && service.playbackControllable)
       actions.push("shuffle", "previous", "play", "next", "repeat")
     else if (service && service.playbackStartable) actions.push("play")
-    if (service && service.lyricsAvailable) actions.push("lyrics")
+    if (service && (service.lyricsAvailable || currentTab === "lyrics"))
+      actions.push("lyrics")
     if (service && service.lengthSeconds > 0 && service.playbackControllable)
       actions.push("seek")
     actions.push("devices", "sleep")
@@ -1119,6 +1116,20 @@ Item {
     var next = Api.listIndexAfterMove(list.count, list.currentIndex, delta)
     if (next < 0) return false
     list.currentIndex = next
+    return true
+  }
+
+  // The lyrics page scrolls itself: it has no row cursor, so PageUp, PageDown,
+  // Home and End move its viewport rather than the panel's cursor.
+  function lyricsPageKey(key) {
+    var page = pageLoader.item
+    if (!page || typeof page.pageBy !== "function"
+        || typeof page.jumpToEdge !== "function") return false
+    if (key === Qt.Key_PageUp) page.pageBy(-1)
+    else if (key === Qt.Key_PageDown) page.pageBy(1)
+    else if (key === Qt.Key_Home) page.jumpToEdge(true)
+    else if (key === Qt.Key_End) page.jumpToEdge(false)
+    else return false
     return true
   }
 
@@ -1265,7 +1276,7 @@ Item {
     else if (action === "play" && service) service.togglePlayback()
     else if (action === "next" && service) service.next()
     else if (action === "repeat" && service) service.cycleRepeat()
-    else if (action === "lyrics") openLyrics()
+    else if (action === "lyrics") toggleLyricsTab()
     else if (action === "devices") chooseTab("devices")
     else if (action === "sleep") sleepPopup.open()
     else if (action === "volume") toggleMute()
@@ -1507,7 +1518,7 @@ Item {
       return handleContextMenuKey(event)
 
     if (createPlaylistPopup.opened || playlistPicker.opened
-        || shortcutHelpPopup.opened || lyricsInstallPopup.opened)
+        || shortcutHelpPopup.opened)
       return false
 
     if (unifiedSearchField.activeFocus && tabbing) {
@@ -1604,6 +1615,11 @@ Item {
       latchShortcutMode()
       return true
     }
+    if (currentTab === "lyrics" && !ctrl && !alt
+        && lyricsPageKey(key)) {
+      latchShortcutMode()
+      return true
+    }
     if (panelCursorActive && !ctrl && !alt && !shift
         && (key === Qt.Key_Home || key === Qt.Key_End)) {
       var actions = regionCursorActions(panelCursorRegion)
@@ -1646,7 +1662,7 @@ Item {
       { section: "PLAYBACK", action: "Play or pause", keys: "Space" },
       { action: "Previous track", keys: "Ctrl+Left" },
       { action: "Next track", keys: "Ctrl+Right" },
-      { action: "Open lyrics in Omasing", keys: "Ctrl+Shift+L" },
+      { action: "Show or hide lyrics", keys: "Ctrl+Shift+L" },
       { action: "Mute or restore volume", keys: "M" },
       { action: "Toggle shuffle", keys: "Ctrl+S" },
       { action: "Cycle repeat", keys: "Ctrl+R" },
@@ -1855,10 +1871,13 @@ Item {
     else shortcutHelpPopup.open()
   }
 
-  function openLyrics() {
+  function toggleLyricsTab() {
+    if (currentTab === "lyrics") {
+      leaveUtilityTab()
+      return
+    }
     if (!service || !service.lyricsAvailable) return
-    var result = service.requestLyrics(lyricsRequestKey)
-    if (result !== "opening") lyricsInstallPopup.open()
+    chooseTab("lyrics")
   }
 
   function open(payloadJson) {
@@ -1899,6 +1918,7 @@ Item {
     syncDraftSettings()
     if (service) {
       service.setUiVisible("full-panel", true)
+      service.setLyricsPageOpen(currentTab === "lyrics")
       service.activate(currentTab)
       restorePlaylistSelection()
       if (currentTab === "detail" && requestedDetail)
@@ -1919,6 +1939,7 @@ Item {
     opened = false
     if (service) {
       service.setUiVisible("full-panel", false)
+      service.setLyricsPageOpen(false)
       service.cancelSearch(false)
     }
     closingFromHost = false
@@ -2034,6 +2055,7 @@ Item {
   // while the panel loader is being remapped by the browser.
   onShortcutHintsEnabledChanged: if (!shortcutHintsEnabled) clearShortcutMode()
   onCurrentTabChanged: {
+    if (service) service.setLyricsPageOpen(currentTab === "lyrics")
     root.rememberCurrentContentTab()
     if (panelCursorActive) ensurePanelCursor()
   }
@@ -2056,6 +2078,10 @@ Item {
       if (!playlist || !root.service) return
       root.openLastRadio()
     }
+    function onShowLyricsChanged() {
+      if (root.service && !root.service.showLyrics
+          && root.currentTab === "lyrics") root.leaveUtilityTab()
+    }
   }
 
   function pageComponent() {
@@ -2069,6 +2095,7 @@ Item {
     if (currentTab === "detail") return detailPage
     if (currentTab === "queue") return queuePage
     if (currentTab === "devices") return devicesPage
+    if (currentTab === "lyrics") return lyricsPage
     return searchPage
   }
 
@@ -2082,6 +2109,7 @@ Item {
     if (currentTab === "queue") return "Queue"
     if (currentTab === "devices") return "Spotify Connect"
     if (currentTab === "setup") return "Settings"
+    if (currentTab === "lyrics") return "Lyrics"
     if (currentTab === "detail") {
       if (artistScopedSearchActive) return "Search in " + service.detailItem.name
       return service && service.detailItem ? service.detailItem.name : "Loading…"
@@ -2101,6 +2129,8 @@ Item {
     if (currentTab === "queue") return "What plays next"
     if (currentTab === "devices") return "Speakers and players"
     if (currentTab === "setup") return "Account, playback and app preferences"
+    if (currentTab === "lyrics") return service && service.title
+      ? String(service.title) + " · " + String(service.artist || "") : "Now playing"
     if (currentTab === "detail") {
       if (artistScopedSearchActive)
         return "Songs, albums and playlists matching “" + artistSearchText.trim() + "”"
@@ -2216,6 +2246,7 @@ Item {
     if (service) {
       persistUiState()
       service.setUiVisible("full-panel", false)
+      service.setLyricsPageOpen(false)
       service.cancelSearch(false)
     }
   }
@@ -2367,55 +2398,6 @@ Item {
           }
         }
       }
-    }
-  }
-
-  Popup {
-    id: lyricsInstallPopup
-    parent: window.contentItem
-    x: Math.max(Style.space(8), (window.width - width) / 2)
-    y: Math.max(Style.space(8), (window.height - height) / 2)
-    width: Math.min(Style.space(400), window.width - Style.space(32))
-    height: lyricsInstallContent.implicitHeight + padding * 2
-    padding: Style.space(10)
-    modal: true
-    focus: true
-    closePolicy: root.service && root.service.lyricsPluginBusy
-      ? Popup.NoAutoClose
-      : Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-    onOpened: root.disarmEscapeClose()
-    onClosed: {
-      if (root.service && !root.service.lyricsPluginBusy)
-        root.service.cancelLyricsPlugin(root.lyricsRequestKey)
-      Qt.callLater(function() { focusScope.forceActiveFocus() })
-    }
-
-    background: BorderSurface {
-      color: root.popupBackground
-      radius: Style.cornerRadius
-      borderSpec: root.popupBorderSpec
-    }
-
-    contentItem: LyricsInstallPrompt {
-      id: lyricsInstallContent
-      width: parent.width
-      service: root.service
-      foreground: root.foreground
-      muted: root.muted
-      surfaceKey: root.lyricsRequestKey
-      onCanceled: lyricsInstallPopup.close()
-    }
-  }
-
-  Connections {
-    target: root.service
-    ignoreUnknownSignals: true
-    function onLyricsPluginPromptRequested(surface, availability) {
-      if (String(surface) === root.lyricsRequestKey) lyricsInstallPopup.open()
-    }
-    function onLyricsPluginOpened(surface) {
-      if (String(surface) === root.lyricsRequestKey) lyricsInstallPopup.close()
     }
   }
 
@@ -3226,10 +3208,11 @@ Item {
       Shortcut {
         sequence: "Ctrl+Shift+L"
         enabled: !root.shortcutsBlocked && !root.textInputFocused()
-          && root.service && root.service.lyricsAvailable
+          && root.service && (root.service.lyricsAvailable
+            || root.currentTab === "lyrics")
         onActivated: {
           root.latchShortcutMode(sequence)
-          root.openLyrics()
+          root.toggleLyricsTab()
         }
       }
       Shortcut {
@@ -4366,11 +4349,13 @@ Item {
                   visible: !root.extraNarrowWidth
                   glyphText: "󰎈"
                   foreground: root.foreground
+                  selected: root.currentTab === "lyrics"
                   hasCursor: root.cursorOn("footer", "lyrics")
-                  tooltipText: root.shortcutHint("Open lyrics in Omasing",
-                    "Ctrl+Shift+L")
-                  enabled: root.service && root.service.lyricsAvailable
-                  onClicked: root.openLyrics()
+                  tooltipText: root.shortcutHint(root.currentTab === "lyrics"
+                    ? "Hide lyrics" : "Show lyrics", "Ctrl+Shift+L")
+                  enabled: root.service && (root.service.lyricsAvailable
+                    || root.currentTab === "lyrics")
+                  onClicked: root.toggleLyricsTab()
                   onHovered: function(on) {
                     if (on) root.setPanelCursor("footer", "lyrics")
                   }
@@ -5889,6 +5874,17 @@ Item {
   }
 
   Component {
+    id: lyricsPage
+
+    LyricsPage {
+      service: root.service
+      foreground: root.foreground
+      muted: root.muted
+      fontFamily: root.fontFamily
+    }
+  }
+
+  Component {
     id: devicesPage
 
     Item {
@@ -6701,7 +6697,7 @@ Item {
                 foreground: root.foreground
                 selected: root.draftShowLyrics
                 tooltipText: root.draftShowLyrics
-                  ? "Show the Omasing lyrics button in the player and mini-player"
+                  ? "Show the lyrics button in the player and mini-player"
                   : "Hide the lyrics button and disable Ctrl+Shift+L"
                 onClicked: {
                   root.draftShowLyrics = !root.draftShowLyrics
@@ -6711,7 +6707,7 @@ Item {
 
               Text {
                 width: parent.width
-                text: "Hide the lyrics button if you do not use Omasing. Playback is unaffected, and the button returns whenever you turn this back on."
+                text: "Hide the lyrics button if you do not want it. Playback is unaffected, and the button returns whenever you turn this back on."
                 color: root.muted
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
